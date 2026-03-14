@@ -1,7 +1,7 @@
 import SidebarNavItem from './SidebarNavItem.jsx';
 import Icon from './Icon.jsx';
 
-function Sidebar({ items, activeKey, user }) {
+function Sidebar({ items, activeKey, user, onNavigate }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -11,12 +11,13 @@ function Sidebar({ items, activeKey, user }) {
 
       <nav className="sidebar-nav">
         {items.map((item) => (
-          <SidebarNavItem
-            key={item.key}
-            icon={item.icon}
-            label={item.label}
-            active={item.key === activeKey}
-          />
+          <div key={item.key} onClick={() => onNavigate && onNavigate(item.key)}>
+            <SidebarNavItem
+              icon={item.icon}
+              label={item.label}
+              active={item.key === activeKey}
+            />
+          </div>
         ))}
       </nav>
 
