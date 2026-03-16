@@ -1,7 +1,7 @@
 import SidebarNavItem from './SidebarNavItem.jsx';
 import Icon from './Icon.jsx';
 
-function Sidebar({ items, activeKey, user, onNavigate }) {
+function Sidebar({ items, activeKey, user, onNavigate, onLogout }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -25,7 +25,7 @@ function Sidebar({ items, activeKey, user, onNavigate }) {
         <img className="sidebar-avatar" src={user.avatar} alt={user.name} />
         <div className="sidebar-user">
           <span className="sidebar-user-name">{user.name}</span>
-          <button className="sidebar-logout">Deconnexion</button>
+          <button className="sidebar-logout" onClick={onLogout}>Deconnexion</button>
         </div>
       </div>
     </aside>

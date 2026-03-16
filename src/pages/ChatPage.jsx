@@ -1,56 +1,138 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
+import {
+  fetchChatBootstrap,
+  fetchGroupMessages,
+  sendGroupMessage,
+} from '../services/chatService.js';
 
-const initialMessages = [
-  { id: 1, type: 'system', text: 'Lucas a complété une séance de running' },
-  {
-    id: 2,
-    type: 'received',
-    sender: 'Lucas',
-    avatar: 'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F25-35%2FEuropean%2F2',
-    text: 'Super séance ce matin !',
-    time: '09:15',
-    grouped: false,
-  },
-  {
-    id: 3,
-    type: 'received',
-    sender: null,
-    avatar: null,
-    text: 'Qui est chaud pour demain ?',
-    time: '09:16',
-    grouped: true,
-  },
-  {
-    id: 4,
-    type: 'received',
-    sender: 'Emma',
-    avatar: 'https://storage.googleapis.com/banani-avatars/avatar%2Ffemale%2F18-25%2FEuropean%2F4',
-    text: 'Moi je suis partante pour un 10k.',
-    time: '09:42',
-    grouped: false,
-  },
-  { id: 5, type: 'sent', text: 'Je vous rejoins !', time: '14:31', grouped: false },
-  { id: 6, type: 'sent', text: 'À quelle heure ?', time: '14:32', grouped: true },
-];
+function formatTime(dateValue) {
+  if (!dateValue) return '--:--';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return '--:--';
+  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function initialsFromName(name) {
+  const safe = (name || 'GC').trim();
+  const parts = safe.split(' ').filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+}
+
+function mapMessages(messages, meId) {
+  const sorted = [...messages].sort(
+    (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+  );
+
+  return sorted.map((msg, index) => {
+    const isSent = msg.senderId === meId;
+    const prev = sorted[index - 1];
+    const grouped = Boolean(prev && prev.senderId === msg.senderId);
+    return {
+      id: msg.id,
+      type: isSent ? 'sent' : 'received',
+      sender: msg.sender?.username || msg.sender?.email || 'Membre',
+      text: msg.content,
+      time: formatTime(msg.createdAt),
+      grouped,
+    };
+  });
+}
 
 function ChatPage() {
-  const [messages, setMessages] = useState(initialMessages);
+  const [conversations, setConversations] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef(null);
+
+  const selectedConversation = useMemo(
+    () => conversations.find((conv) => conv.id === selectedGroupId) || null,
+    [conversations, selectedGroupId]
+  );
+
+  const loadBootstrap = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const bootstrap = await fetchChatBootstrap();
+      setCurrentUser(bootstrap.me || null);
+      setConversations(bootstrap.conversations || []);
+      setSelectedGroupId((prev) => prev || bootstrap.conversations?.[0]?.id || '');
+    } catch (loadError) {
+      setError(loadError.message || 'Impossible de charger le chat.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadMessages = async (groupId) => {
+    if (!groupId) {
+      setMessages([]);
+      return;
+    }
+
+    try {
+      const apiMessages = await fetchGroupMessages(groupId, 80);
+      const uiMessages = mapMessages(apiMessages, currentUser?.id);
+      setMessages(uiMessages);
+      if (apiMessages.length) {
+        const last = apiMessages[apiMessages.length - 1];
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === groupId
+              ? {
+                  ...conv,
+                  lastMessage: last.content,
+                  lastCreatedAt: last.createdAt,
+                }
+              : conv
+          )
+        );
+      }
+    } catch (loadError) {
+      setError(loadError.message || 'Impossible de charger les messages.');
+    }
+  };
+
+  useEffect(() => {
+    loadBootstrap();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedGroupId || !currentUser?.id) return;
+
+    loadMessages(selectedGroupId);
+    const timer = setInterval(() => {
+      loadMessages(selectedGroupId);
+    }, 8000);
+
+    return () => clearInterval(timer);
+  }, [selectedGroupId, currentUser?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = () => {
-    if (!inputValue.trim()) return;
-    const now = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), type: 'sent', text: inputValue.trim(), time: now, grouped: false },
-    ]);
-    setInputValue('');
+  const sendMessage = async () => {
+    if (!inputValue.trim() || !selectedGroupId) return;
+
+    setIsSending(true);
+    setError('');
+    try {
+      await sendGroupMessage(selectedGroupId, inputValue.trim());
+      setInputValue('');
+      await loadMessages(selectedGroupId);
+    } catch (sendError) {
+      setError(sendError.message || 'Envoi du message impossible.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -62,24 +144,34 @@ function ChatPage() {
 
   return (
     <div className="chat-layout">
+      {error && <p className="dashboard-status dashboard-status-error chat-status-banner">{error}</p>}
+      {isLoading && <p className="dashboard-status chat-status-banner">Chargement des conversations...</p>}
+
       {/* Left: Conversations */}
       <div className="chat-left-col">
         <div className="chat-left-header">Conversations</div>
         <div className="chat-conv-list">
-          <div className="chat-conv is-active">
-            <div className="chat-conv-avatar">GC</div>
-            <div className="chat-conv-info">
-              <div className="chat-conv-top">
-                <span className="chat-conv-name">Chat du groupe GymCrew</span>
-                <span className="chat-conv-time">14:32</span>
+          {conversations.map((conversation) => (
+            <div
+              key={conversation.id}
+              className={`chat-conv${selectedGroupId === conversation.id ? ' is-active' : ''}`}
+              onClick={() => setSelectedGroupId(conversation.id)}
+            >
+              <div className="chat-conv-avatar">{initialsFromName(conversation.name)}</div>
+              <div className="chat-conv-info">
+                <div className="chat-conv-top">
+                  <span className="chat-conv-name">{conversation.name}</span>
+                  <span className="chat-conv-time">{formatTime(conversation.lastCreatedAt)}</span>
+                </div>
+                <span className="chat-conv-last">{conversation.lastMessage || 'Aucun message'}</span>
               </div>
-              <span className="chat-conv-last">À quelle heure ?</span>
             </div>
-          </div>
+          ))}
+          {!conversations.length && <p className="chat-empty-note">Aucun groupe de discussion.</p>}
         </div>
         <div className="chat-left-footer">
           <span className="chat-pulse-dot" />
-          <span className="chat-online-label">Temps réel actif</span>
+          <span className="chat-online-label">Sync auto toutes les 8 sec</span>
         </div>
       </div>
 
@@ -87,10 +179,12 @@ function ChatPage() {
       <div className="chat-right-col">
         <div className="chat-header">
           <div className="chat-header-left">
-            <div className="chat-header-avatar">GC</div>
+            <div className="chat-header-avatar">
+              {initialsFromName(selectedConversation?.name || 'GC')}
+            </div>
             <div>
-              <p className="chat-header-title">Chat du groupe GymCrew</p>
-              <p className="chat-header-status">● 5 en ligne</p>
+              <p className="chat-header-title">{selectedConversation?.name || 'Aucun groupe'}</p>
+              <p className="chat-header-status">● {messages.length} message(s)</p>
             </div>
           </div>
           <button className="chat-header-btn">
@@ -99,26 +193,24 @@ function ChatPage() {
         </div>
 
         <div className="chat-messages-area">
+          {!messages.length && (
+            <div className="msg-system">
+              <div className="msg-sys-line" />
+              <span className="msg-sys-text">Aucun message pour ce groupe</span>
+              <div className="msg-sys-line" />
+            </div>
+          )}
           {messages.map((msg) => {
-            if (msg.type === 'system') {
-              return (
-                <div key={msg.id} className="msg-system">
-                  <div className="msg-sys-line" />
-                  <span className="msg-sys-text">— {msg.text} —</span>
-                  <div className="msg-sys-line" />
-                </div>
-              );
-            }
             if (msg.type === 'received') {
               return (
                 <div key={msg.id} className={`msg-received${msg.grouped ? ' is-grouped' : ''}`}>
-                  {msg.avatar ? (
-                    <img src={msg.avatar} alt={msg.sender} className="msg-avatar" />
+                  {!msg.grouped ? (
+                    <div className="msg-avatar-fallback">{initialsFromName(msg.sender)}</div>
                   ) : (
                     <div className="msg-avatar-placeholder" />
                   )}
                   <div className="msg-content-wrap">
-                    {msg.sender && <span className="msg-sender-name">{msg.sender}</span>}
+                    {!msg.grouped && msg.sender && <span className="msg-sender-name">{msg.sender}</span>}
                     <div className="msg-bubble-recv">{msg.text}</div>
                     <span className="msg-time">{msg.time}</span>
                   </div>
@@ -143,10 +235,12 @@ function ChatPage() {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
+            disabled={!selectedGroupId || isSending}
           />
           <button
-            className={`chat-send-btn${inputValue.trim() ? ' is-active' : ''}`}
+            className={`chat-send-btn${inputValue.trim() && selectedGroupId && !isSending ? ' is-active' : ''}`}
             onClick={sendMessage}
+            disabled={!selectedGroupId || isSending}
           >
             <Icon name="lucide:send" size={18} />
           </button>

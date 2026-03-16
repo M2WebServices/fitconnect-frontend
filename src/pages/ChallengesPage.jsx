@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Modal from '../components/Modal.jsx';
+import { fetchChallengesFallbackData } from '../services/challengesService.js';
 
 const challengesData = [
   {
@@ -111,9 +112,82 @@ function ChallengeCard({ challenge }) {
 function ChallengesPage() {
   const [challengeFilter, setChallengeFilter] = useState('En cours');
   const [showModal, setShowModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [fallbackData, setFallbackData] = useState({
+    myRanking: null,
+    myEvents: [],
+    myGroups: [],
+  });
   const [form, setForm] = useState({ title: '', description: '', points: '', duration: '' });
 
-  const filteredChallenges = challengesData.filter(
+  useEffect(() => {
+    let isMounted = true;
+
+    const load = async () => {
+      setIsLoading(true);
+      setError('');
+      try {
+        const data = await fetchChallengesFallbackData();
+        if (isMounted) {
+          setFallbackData(data);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError.message || 'Impossible de charger les données challenges.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const computedChallenges = useMemo(() => {
+    const score = fallbackData.myRanking?.score || 0;
+    const eventCount = fallbackData.myEvents.length;
+    const groupCount = fallbackData.myGroups.length;
+
+    return challengesData.map((challenge) => {
+      if (challenge.id === 1) {
+        return {
+          ...challenge,
+          progress: Math.min(100, Math.max(5, Math.round((score % 1000) / 10))),
+          participants: Math.max(8, groupCount * 7 + 6),
+        };
+      }
+
+      if (challenge.id === 2) {
+        return {
+          ...challenge,
+          participants: Math.max(10, eventCount * 3 + groupCount * 2),
+        };
+      }
+
+      return {
+        ...challenge,
+        participants: Math.max(12, eventCount * 4 + 10),
+      };
+    });
+  }, [fallbackData]);
+
+  const computedActiveChallenges = useMemo(() => {
+    const score = fallbackData.myRanking?.score || 0;
+    const base = Math.min(100, Math.max(10, Math.round((score % 700) / 7)));
+    return activeChallengesData.map((item, index) => ({
+      ...item,
+      progress: Math.max(10, Math.min(100, base - index * 12)),
+    }));
+  }, [fallbackData]);
+
+  const filteredChallenges = computedChallenges.filter(
     (c) => c.status === CHALLENGE_STATUS_MAP[challengeFilter]
   );
 
@@ -121,6 +195,9 @@ function ChallengesPage() {
 
   return (
     <div className="events-page">
+      {error && <p className="dashboard-status dashboard-status-error">{error}</p>}
+      {isLoading && <p className="dashboard-status">Chargement des challenges...</p>}
+
       <section className="ev-section">
         <div className="ev-page-header">
           <h1 className="ev-page-title">Challenges</h1>
@@ -138,7 +215,7 @@ function ChallengesPage() {
         <div className="ev-active-section">
           <h2 className="ev-section-subtitle">Mes challenges actifs</h2>
           <div className="ev-active-scroll">
-            {activeChallengesData.map((c) => (
+            {computedActiveChallenges.map((c) => (
               <div key={c.id} className="ev-compact-card">
                 <p className="ev-compact-title">{c.title}</p>
                 <p className="ev-compact-points">
@@ -153,6 +230,11 @@ function ChallengesPage() {
             ))}
           </div>
         </div>
+
+        <p className="ch-fallback-note">
+          Source actuelle: métriques réelles `myRanking/myEvents/myGroups` appliquées à une UI
+          challenge temporaire, en attendant une API challenge dédiée.
+        </p>
       </section>
 
       {/* Modale création challenge */}

@@ -1,39 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Modal from '../components/Modal.jsx';
-
-const eventsData = [
-  {
-    id: 1,
-    date: '14 Mars',
-    time: '18:00 - 20:00',
-    title: 'Tournoi de Futsal',
-    location: 'Stade Jean Bouin',
-    participants: 24,
-    maxParticipants: 30,
-    status: 'open',
-  },
-  {
-    id: 2,
-    date: '22 Mars',
-    time: '09:00 - 11:00',
-    title: 'Course 10km du dimanche',
-    location: 'Parc Montsouris',
-    participants: 18,
-    maxParticipants: 20,
-    status: 'registered',
-  },
-  {
-    id: 3,
-    date: '5 Mars',
-    time: '10:00 - 12:00',
-    title: 'Atelier Crossfit Débutants',
-    location: 'Salle Principale GymCrew',
-    participants: 15,
-    maxParticipants: 15,
-    status: 'past',
-  },
-];
+import { createEvent, fetchEventsPageData, joinEvent } from '../services/eventsService.js';
 
 const EVENT_TABS = ['Tous', 'Mes inscriptions', 'À venir', 'Passés'];
 
@@ -53,38 +21,60 @@ function FilterTabs({ tabs, active, onChange }) {
   );
 }
 
-function EventCard({ event }) {
-  const pct = Math.round((event.participants / event.maxParticipants) * 100);
+function formatBannerDate(dateValue) {
+  if (!dateValue) return { dateLabel: 'Date', timeLabel: '--:--' };
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return { dateLabel: dateValue, timeLabel: '--:--' };
+  }
+
+  return {
+    dateLabel: date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+    timeLabel: date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+  };
+}
+
+function formatLongDate(dateValue) {
+  if (!dateValue) return 'Date a confirmer';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return dateValue;
+  return date.toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function EventCard({ event, onJoin, isJoining }) {
+  const { dateLabel, timeLabel } = formatBannerDate(event.date);
   return (
     <div className="ev-card">
       <div className={`ev-banner${event.status === 'past' ? ' ev-banner-muted' : ''}`}>
-        <div className="ev-date">{event.date}</div>
-        <div className="ev-time">{event.time}</div>
+        <div className="ev-date">{dateLabel}</div>
+        <div className="ev-time">{timeLabel}</div>
       </div>
       <div className="ev-body">
         <h3 className="ev-title">{event.title}</h3>
         <div className="ev-info-row">
           <Icon name="lucide:map-pin" size={16} />
-          {event.location}
+          {event.groupName}
         </div>
         <div className="ev-info-row">
-          <Icon name="lucide:users" size={16} />
-          {event.participants}/{event.maxParticipants} participants
-        </div>
-        <div className="ev-progress-wrap">
-          <div className="ev-prog-bar">
-            <div className="ev-prog-fill" style={{ width: `${pct}%` }} />
-          </div>
-          <span className="ev-prog-label">{pct}% des places occupées</span>
+          <Icon name="lucide:calendar-days" size={16} />
+          {formatLongDate(event.date)}
         </div>
         {event.status === 'past' && (
           <button className="btn-full btn-ev-disabled" disabled>Terminé</button>
         )}
         {event.status === 'registered' && (
-          <button className="btn-full btn-ev-danger">Se désinscrire</button>
+          <button className="btn-full btn-ev-disabled" disabled>Inscrit</button>
         )}
         {event.status === 'open' && (
-          <button className="btn-full btn-ev-primary">Participer</button>
+          <button className="btn-full btn-ev-primary" onClick={() => onJoin(event.id)} disabled={isJoining}>
+            {isJoining ? 'Inscription...' : 'Participer'}
+          </button>
         )}
       </div>
     </div>
@@ -92,21 +82,116 @@ function EventCard({ event }) {
 }
 
 function EventsPage() {
+  const [events, setEvents] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [joiningEventId, setJoiningEventId] = useState('');
+  const [error, setError] = useState('');
   const [eventFilter, setEventFilter] = useState('Tous');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '' });
+  const [form, setForm] = useState({
+    groupId: '',
+    title: '',
+    description: '',
+    date: '',
+    time: '',
+    location: '',
+    capacity: '',
+  });
 
-  const filteredEvents = () => {
-    if (eventFilter === 'Mes inscriptions') return eventsData.filter((e) => e.status === 'registered');
-    if (eventFilter === 'À venir') return eventsData.filter((e) => e.status !== 'past');
-    if (eventFilter === 'Passés') return eventsData.filter((e) => e.status === 'past');
-    return eventsData;
+  const loadEvents = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const data = await fetchEventsPageData();
+      setEvents(data.events || []);
+      setGroups(data.groups || []);
+      setForm((prev) => ({
+        ...prev,
+        groupId: prev.groupId || data.groups?.[0]?.id || '',
+      }));
+    } catch (loadError) {
+      setError(loadError.message || 'Impossible de charger les evenements.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  const filteredEvents = useMemo(() => {
+    if (eventFilter === 'Mes inscriptions') return events.filter((e) => e.status === 'registered');
+    if (eventFilter === 'À venir') return events.filter((e) => e.status !== 'past');
+    if (eventFilter === 'Passés') return events.filter((e) => e.status === 'past');
+    return events;
+  }, [eventFilter, events]);
+
+  const handleCreateEvent = async () => {
+    if (!form.groupId || !form.title.trim() || !form.date || !form.time) {
+      setError('Merci de renseigner groupe, titre, date et heure.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      const dateIso = new Date(`${form.date}T${form.time}`).toISOString();
+      const extra = [];
+      if (form.location.trim()) extra.push(`Lieu: ${form.location.trim()}`);
+      if (form.capacity.trim()) extra.push(`Capacite max: ${form.capacity.trim()}`);
+
+      const description = [form.description.trim(), extra.join(' | ')].filter(Boolean).join(' | ');
+
+      await createEvent({
+        groupId: form.groupId,
+        title: form.title.trim(),
+        description,
+        dateIso,
+      });
+
+      setShowModal(false);
+      setForm((prev) => ({
+        ...prev,
+        title: '',
+        description: '',
+        date: '',
+        time: '',
+        location: '',
+        capacity: '',
+      }));
+      await loadEvents();
+    } catch (submitError) {
+      setError(submitError.message || 'Creation de l evenement impossible.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleJoinEvent = async (eventId) => {
+    setJoiningEventId(eventId);
+    setError('');
+
+    try {
+      await joinEvent(eventId);
+      await loadEvents();
+    } catch (joinError) {
+      setError(joinError.message || 'Inscription impossible pour cet evenement.');
+    } finally {
+      setJoiningEventId('');
+    }
   };
 
   const setField = (field, value) => setForm((p) => ({ ...p, [field]: value }));
 
   return (
     <div className="events-page">
+      {error && <p className="dashboard-status dashboard-status-error">{error}</p>}
+      {isLoading && <p className="dashboard-status">Chargement des evenements...</p>}
+
       {/* ---- ÉVÉNEMENTS ---- */}
       <section className="ev-section">
         <div className="ev-page-header">
@@ -118,14 +203,38 @@ function EventsPage() {
         </div>
         <FilterTabs tabs={EVENT_TABS} active={eventFilter} onChange={setEventFilter} />
         <div className="ev-grid-2">
-          {filteredEvents().map((event) => (
-            <EventCard key={event.id} event={event} />
-          ))}
+          {filteredEvents.length ? (
+            filteredEvents.map((event) => (
+              <EventCard
+                key={event.id}
+                event={event}
+                onJoin={handleJoinEvent}
+                isJoining={joiningEventId === event.id}
+              />
+            ))
+          ) : (
+            <p className="dashboard-empty">Aucun evenement pour ce filtre.</p>
+          )}
         </div>
       </section>
 
       {/* Modale création événement */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Créer un événement">
+        <div className="ev-form-group">
+          <label className="field-label">Groupe</label>
+          <select
+            className="field-input-text"
+            value={form.groupId}
+            onChange={(e) => setField('groupId', e.target.value)}
+          >
+            {!groups.length && <option value="">Aucun groupe disponible</option>}
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="ev-form-group">
           <label className="field-label">Titre</label>
           <input className="field-input-text" placeholder="Ex: Course au parc" value={form.title} onChange={(e) => setField('title', e.target.value)} />
@@ -155,7 +264,9 @@ function EventsPage() {
           </div>
         </div>
         <div className="modal-actions">
-          <button className="btn-primary-full" onClick={() => setShowModal(false)}>Créer l'événement</button>
+          <button className="btn-primary-full" onClick={handleCreateEvent} disabled={isSubmitting}>
+            {isSubmitting ? 'Creation...' : "Créer l'événement"}
+          </button>
           <button className="btn-secondary-text" onClick={() => setShowModal(false)}>Annuler</button>
         </div>
       </Modal>

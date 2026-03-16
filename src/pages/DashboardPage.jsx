@@ -1,117 +1,75 @@
+import { useEffect, useMemo, useState } from 'react';
 import Card from '../components/Card.jsx';
-import AvatarStack from '../components/AvatarStack.jsx';
 import ProgressBar from '../components/ProgressBar.jsx';
 import ListRow from '../components/ListRow.jsx';
 import Icon from '../components/Icon.jsx';
+import { fetchDashboardData } from '../services/dashboardService.js';
 
-const user = {
-  name: 'Alexandre Martin',
-  avatar:
-    'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F25-35%2FEuropean%2F2',
-  title: 'Challenger',
-  points: '1,450',
-  progress: 68,
-};
+const FALLBACK_AVATAR =
+  'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F25-35%2FEuropean%2F2';
 
-const community = {
-  name: 'Crew Paris Centre',
-  members: 128,
-  avatars: [
-    {
-      src: 'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F18-25%2FEuropean%2F3',
-      alt: 'Lucas',
-    },
-    {
-      src: 'https://storage.googleapis.com/banani-avatars/avatar%2Ffemale%2F25-35%2FEuropean%2F5',
-      alt: 'Sophie',
-    },
-    {
-      src: 'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F35-50%2FAfrican%2F1',
-      alt: 'Marc',
-    },
-    {
-      src: 'https://storage.googleapis.com/banani-avatars/avatar%2Ffemale%2F18-25%2FEuropean%2F1',
-      alt: 'Emma',
-    },
-  ],
-};
+function formatEventDate(dateValue) {
+  if (!dateValue) return 'Date a confirmer';
 
-const sessions = [
-  {
-    title: 'Seance Musculation Dos/Biceps',
-    date: "Aujourd'hui, 18:00",
-    duration: '1h 15m',
-    icon: 'lucide:flame',
-    iconColor: '#ef4444',
-  },
-  {
-    title: 'Cardio HIIT - Exterieur',
-    date: 'Demain, 07:00',
-    duration: '45m',
-    icon: 'lucide:footprints',
-    iconColor: '#3b82f6',
-  },
-  {
-    title: 'Yoga & Mobilite',
-    date: 'Samedi, 09:30',
-    duration: '1h 00m',
-    icon: 'lucide:heart',
-    iconColor: '#8b5cf6',
-  },
-];
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return dateValue;
 
-const events = [
-  {
-    title: 'Course 10km du dimanche',
-    date: 'Dimanche 15 Octobre 2023',
-    attendees: '82 participants',
-  },
-  {
-    title: 'Atelier Nutrition & Recuperation',
-    date: 'Jeudi 19 Octobre 2023',
-    attendees: '36 participants',
-  },
-];
+  return date.toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
 
-const activity = [
-  {
-    name: 'Lucas',
-    action: 'a complete une seance de running',
-    time: 'il y a 2h',
-    avatar:
-      'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F18-25%2FEuropean%2F3',
-  },
-  {
-    name: 'Sophie',
-    action: 'a battu son record au souleve de terre',
-    time: 'il y a 4h',
-    avatar:
-      'https://storage.googleapis.com/banani-avatars/avatar%2Ffemale%2F25-35%2FEuropean%2F5',
-  },
-  {
-    name: 'Marc',
-    action: 'a rejoint le challenge 100 pompes par jour',
-    time: 'il y a 1j',
-    avatar:
-      'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F35-50%2FAfrican%2F1',
-  },
-  {
-    name: 'Emma',
-    action: 'a planifie une seance cardio',
-    time: 'il y a 2j',
-    avatar:
-      'https://storage.googleapis.com/banani-avatars/avatar%2Ffemale%2F18-25%2FEuropean%2F1',
-  },
-  {
-    name: 'Nicolas',
-    action: 'a partage une recette proteinee',
-    time: 'il y a 3j',
-    avatar:
-      'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F25-35%2FEuropean%2F6',
-  },
-];
+function getProgressFromRanking(score) {
+  if (!score) return 0;
+  return Math.min(100, Math.round((score % 1000) / 10));
+}
+
+function getProfileTitle(rank) {
+  if (!rank) return 'Sportif connecte';
+  if (rank <= 3) return 'Podium';
+  if (rank <= 10) return 'Top 10';
+  if (rank <= 25) return 'Competiteur';
+  return 'Challenger';
+}
 
 function DashboardPage() {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDashboard = async () => {
+      setIsLoading(true);
+      setError('');
+
+      try {
+        const data = await fetchDashboardData();
+        if (isMounted) {
+          setDashboardData(data);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError.message || 'Impossible de charger le dashboard.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadDashboard();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const today = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
@@ -119,88 +77,161 @@ function DashboardPage() {
     year: 'numeric',
   });
 
+  const me = dashboardData?.me;
+  const ranking = dashboardData?.myRanking;
+  const groups = dashboardData?.myGroups || [];
+  const events = dashboardData?.myEvents || [];
+
+  const profile = useMemo(
+    () => ({
+      name: me?.username || me?.email || 'Utilisateur',
+      avatar: FALLBACK_AVATAR,
+      title: getProfileTitle(ranking?.rank),
+      points: new Intl.NumberFormat('fr-FR').format(ranking?.score || 0),
+      progress: getProgressFromRanking(ranking?.score),
+    }),
+    [me, ranking]
+  );
+
+  const activity = useMemo(() => {
+    const entries = [];
+
+    if (ranking?.rank) {
+      entries.push({
+        icon: 'lucide:medal',
+        color: '#f97316',
+        text: `Tu es actuellement classe #${ranking.rank} avec ${ranking.score || 0} points.`,
+      });
+    }
+
+    if (groups.length) {
+      entries.push({
+        icon: 'lucide:users',
+        color: '#1e3a5f',
+        text: `Tu participes a ${groups.length} groupe${groups.length > 1 ? 's' : ''}.`,
+      });
+    }
+
+    if (events.length) {
+      entries.push({
+        icon: 'lucide:calendar-check',
+        color: '#10b981',
+        text: `${events.length} evenement${events.length > 1 ? 's' : ''} est/sont associe(s) a ton compte.`,
+      });
+    }
+
+    if (!entries.length) {
+      entries.push({
+        icon: 'lucide:info',
+        color: '#64748b',
+        text: 'Aucune activite exploitable n est encore disponible pour ton compte.',
+      });
+    }
+
+    return entries;
+  }, [events, groups, ranking]);
+
   return (
     <div className="page-content">
       <header className="dashboard-header">
-        <h1>Bonjour, Alexandre 👋</h1>
+        <h1>Bonjour, {profile.name} 👋</h1>
         <p className="dashboard-date">{today}</p>
       </header>
+
+      {error && <p className="dashboard-status dashboard-status-error">{error}</p>}
+
+      {isLoading && <p className="dashboard-status">Chargement des donnees...</p>}
 
       <div className="dashboard-grid">
         <Card title="Mon profil rapide" icon="lucide:user-circle">
           <div className="profile-card">
-            <img className="profile-avatar" src={user.avatar} alt={user.name} />
+            <img className="profile-avatar" src={profile.avatar} alt={profile.name} />
             <div className="profile-details">
-              <p className="profile-name">{user.name}</p>
-              <span className="badge badge-accent">{user.title}</span>
+              <p className="profile-name">{profile.name}</p>
+              <span className="badge badge-accent">{profile.title}</span>
               <div className="profile-points">
-                <span className="points-value">{user.points}</span>
+                <span className="points-value">{profile.points}</span>
                 <span className="points-label">points</span>
               </div>
-              <ProgressBar value={user.progress} />
+              <ProgressBar value={profile.progress} />
             </div>
           </div>
         </Card>
 
-        <Card title="Ma communaute" icon="lucide:users">
+        <Card title="Mes groupes" icon="lucide:users">
           <div className="community-card">
             <div>
-              <p className="community-name">{community.name}</p>
-              <p className="community-meta">{community.members} membres actifs</p>
+              <p className="community-name">{groups[0]?.name || 'Aucun groupe pour le moment'}</p>
+              <p className="community-meta">
+                {groups.length
+                  ? `${groups.length} groupe${groups.length > 1 ? 's' : ''} rejoint(s)`
+                  : 'Rejoins une communaute pour commencer a interagir'}
+              </p>
             </div>
-            <AvatarStack avatars={community.avatars} />
+            <span className="dashboard-stat-badge">{groups.length}</span>
           </div>
         </Card>
 
         <Card
-          title="Mes prochaines seances"
+          title="Mon classement"
           icon="lucide:activity"
-          action={<button className="link-button">Voir le planning</button>}
+          action={<button className="link-button">Vue en direct</button>}
         >
           <div className="stack">
-            {sessions.map((session) => (
-              <ListRow
-                key={session.title}
-                leading={
-                  <span className="list-icon">
-                    <Icon name={session.icon} size={24} style={{ color: session.iconColor }} />
-                  </span>
-                }
-                title={session.title}
-                subtitle={session.date}
-                meta={<span className="pill">{session.duration}</span>}
-              />
-            ))}
+            <ListRow
+              leading={
+                <span className="list-icon">
+                  <Icon name="lucide:medal" size={24} style={{ color: '#f97316' }} />
+                </span>
+              }
+              title={ranking?.rank ? `Position #${ranking.rank}` : 'Classement indisponible'}
+              subtitle="Classement global"
+              meta={<span className="pill">{ranking?.score || 0} pts</span>}
+            />
+            <ListRow
+              leading={
+                <span className="list-icon">
+                  <Icon name="lucide:user-round-check" size={24} style={{ color: '#1e3a5f' }} />
+                </span>
+              }
+              title={me?.email || 'Email indisponible'}
+              subtitle="Compte authentifie"
+            />
           </div>
         </Card>
 
         <Card title="Evenements a venir" icon="lucide:calendar-check">
           <div className="stack">
-            {events.map((event) => (
+            {events.length ? (
+              events.slice(0, 4).map((event) => (
               <ListRow
-                key={event.title}
+                key={event.id}
                 leading={
                   <span className="list-icon">
                     <Icon name="lucide:calendar-check" size={24} />
                   </span>
                 }
                 title={event.title}
-                subtitle={event.attendees}
-                meta={<span className="pill pill-muted">{event.date}</span>}
+                subtitle={event.description || 'Aucune description'}
+                meta={<span className="pill pill-muted">{formatEventDate(event.date)}</span>}
               />
-            ))}
+              ))
+            ) : (
+              <p className="dashboard-empty">Aucun evenement remonte depuis la gateway.</p>
+            )}
           </div>
         </Card>
       </div>
 
-      <Card title="Activite recente de la communaute" icon="lucide:users">
+      <Card title="Resume de mon activite" icon="lucide:users">
         <div className="stack">
           {activity.map((entry) => (
-            <div className="activity-row" key={`${entry.name}-${entry.time}`}>
-              <img className="activity-avatar" src={entry.avatar} alt={entry.name} />
+            <div className="activity-row" key={entry.text}>
+              <span className="activity-icon-wrap">
+                <Icon name={entry.icon} size={18} style={{ color: entry.color }} />
+              </span>
               <p className="activity-text">
-                <span className="activity-name">{entry.name}</span> {entry.action}{' '}
-                <span className="activity-time">· {entry.time}</span>
+                {entry.text}
               </p>
             </div>
           ))}
