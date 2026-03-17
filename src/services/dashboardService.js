@@ -1,5 +1,5 @@
 import { gatewayRequest } from './graphqlClient.js';
-import { getAuthToken } from './authSession.js';
+import { requireAuthToken } from './serviceUtils.js';
 
 const DASHBOARD_QUERY = `
   query DashboardHome {
@@ -30,10 +30,7 @@ const DASHBOARD_QUERY = `
 `;
 
 export async function fetchDashboardData() {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Session introuvable.');
-  }
+  const token = requireAuthToken();
 
   return gatewayRequest(DASHBOARD_QUERY, {}, token);
 }

@@ -1,5 +1,5 @@
 import { gatewayRequest } from './graphqlClient.js';
-import { getAuthToken } from './authSession.js';
+import { requireAuthToken } from './serviceUtils.js';
 
 const RANKING_QUERY = `
   query RankingPage($limit: Int) {
@@ -27,10 +27,7 @@ const RANKING_QUERY = `
 `;
 
 export async function fetchRankingData(limit = 20) {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Session introuvable. Merci de vous reconnecter.');
-  }
+  const token = requireAuthToken();
 
   const data = await gatewayRequest(RANKING_QUERY, { limit }, token);
   return {

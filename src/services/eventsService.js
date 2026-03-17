@@ -1,5 +1,5 @@
 import { gatewayRequest } from './graphqlClient.js';
-import { getAuthToken } from './authSession.js';
+import { requireAuthToken } from './serviceUtils.js';
 
 const MY_GROUPS_QUERY = `
   query MyGroups {
@@ -64,14 +64,6 @@ const JOIN_EVENT_MUTATION = `
   }
 `;
 
-function getTokenOrThrow() {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Session introuvable. Merci de vous reconnecter.');
-  }
-  return token;
-}
-
 function mergeUniqueEvents(events) {
   const map = new Map();
   events.forEach((event) => {
@@ -105,7 +97,7 @@ function addComputedFields(events, myEventIds, groupsById) {
 }
 
 export async function fetchEventsPageData() {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
 
   const [{ myGroups }, { myEvents }] = await Promise.all([
     gatewayRequest(MY_GROUPS_QUERY, {}, token),
@@ -134,7 +126,7 @@ export async function fetchEventsPageData() {
 }
 
 export async function createEvent({ groupId, title, description, dateIso }) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
 
   const payload = await gatewayRequest(
     CREATE_EVENT_MUTATION,
@@ -151,6 +143,6 @@ export async function createEvent({ groupId, title, description, dateIso }) {
 }
 
 export async function joinEvent(eventId) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   return gatewayRequest(JOIN_EVENT_MUTATION, { eventId }, token);
 }

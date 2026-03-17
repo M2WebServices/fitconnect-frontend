@@ -1,5 +1,5 @@
 import { gatewayRequest } from './graphqlClient.js';
-import { getAuthToken } from './authSession.js';
+import { requireAuthToken } from './serviceUtils.js';
 
 const PROFILE_QUERY = `
   query ProfilePage {
@@ -30,10 +30,7 @@ const PROFILE_QUERY = `
 `;
 
 export async function fetchProfileData() {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Session introuvable. Merci de vous reconnecter.');
-  }
+  const token = requireAuthToken();
 
   const payload = await gatewayRequest(PROFILE_QUERY, {}, token);
   return {

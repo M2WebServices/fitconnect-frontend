@@ -1,54 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Modal from '../components/Modal.jsx';
-import { fetchChallengesFallbackData } from '../services/challengesService.js';
-
-const challengesData = [
-  {
-    id: 1,
-    status: 'en-cours',
-    title: '100 pompes par jour',
-    description:
-      'Réalisez 100 pompes quotidiennement pendant 30 jours. Progressez à votre rythme et relevez le défi collectif.',
-    points: 500,
-    participants: 42,
-    progress: 65,
-    progressColor: 'fill-orange',
-    action: 'Continuer',
-    actionClass: 'btn-ev-primary',
-  },
-  {
-    id: 2,
-    status: 'a-venir',
-    title: 'Marathon de Mai',
-    description:
-      'Préparez-vous pour le marathon annuel de la communauté. 42km de dépassement de soi.',
-    points: 1200,
-    participants: 15,
-    progress: null,
-    action: "S'inscrire",
-    actionClass: 'btn-ev-secondary',
-  },
-  {
-    id: 3,
-    status: 'termine',
-    title: 'Défi Cardio Février',
-    description:
-      'Challenge de cardio intensif sur tout le mois de février. Bravo à tous les participants !',
-    points: 300,
-    participants: 38,
-    progress: 100,
-    progressColor: 'fill-green',
-    action: 'Voir les résultats',
-    actionClass: 'btn-ev-muted',
-  },
-];
-
-const activeChallengesData = [
-  { id: 1, title: '100 pompes par jour', points: 500, progress: 65 },
-  { id: 2, title: 'Planche quotidienne', points: 200, progress: 40 },
-  { id: 3, title: '5km en moins de 30min', points: 350, progress: 80 },
-];
+import { fetchChallengesData } from '../services/challengesService.js';
 
 const CHALLENGE_TABS = ['En cours', 'À venir', 'Terminés'];
 const CHALLENGE_STATUS_MAP = { 'En cours': 'en-cours', 'À venir': 'a-venir', 'Terminés': 'termine' };
@@ -114,11 +67,7 @@ function ChallengesPage() {
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [fallbackData, setFallbackData] = useState({
-    myRanking: null,
-    myEvents: [],
-    myGroups: [],
-  });
+  const [challenges, setChallenges] = useState([]);
   const [form, setForm] = useState({ title: '', description: '', points: '', duration: '' });
 
   useEffect(() => {
@@ -128,9 +77,9 @@ function ChallengesPage() {
       setIsLoading(true);
       setError('');
       try {
-        const data = await fetchChallengesFallbackData();
+        const data = await fetchChallengesData();
         if (isMounted) {
-          setFallbackData(data);
+          setChallenges(data);
         }
       } catch (loadError) {
         if (isMounted) {
@@ -150,45 +99,13 @@ function ChallengesPage() {
     };
   }, []);
 
-  const computedChallenges = useMemo(() => {
-    const score = fallbackData.myRanking?.score || 0;
-    const eventCount = fallbackData.myEvents.length;
-    const groupCount = fallbackData.myGroups.length;
-
-    return challengesData.map((challenge) => {
-      if (challenge.id === 1) {
-        return {
-          ...challenge,
-          progress: Math.min(100, Math.max(5, Math.round((score % 1000) / 10))),
-          participants: Math.max(8, groupCount * 7 + 6),
-        };
-      }
-
-      if (challenge.id === 2) {
-        return {
-          ...challenge,
-          participants: Math.max(10, eventCount * 3 + groupCount * 2),
-        };
-      }
-
-      return {
-        ...challenge,
-        participants: Math.max(12, eventCount * 4 + 10),
-      };
-    });
-  }, [fallbackData]);
-
-  const computedActiveChallenges = useMemo(() => {
-    const score = fallbackData.myRanking?.score || 0;
-    const base = Math.min(100, Math.max(10, Math.round((score % 700) / 7)));
-    return activeChallengesData.map((item, index) => ({
-      ...item,
-      progress: Math.max(10, Math.min(100, base - index * 12)),
-    }));
-  }, [fallbackData]);
-
-  const filteredChallenges = computedChallenges.filter(
+  const filteredChallenges = challenges.filter(
     (c) => c.status === CHALLENGE_STATUS_MAP[challengeFilter]
+  );
+
+  const activeChallenges = useMemo(
+    () => challenges.filter((challenge) => challenge.status === 'en-cours').slice(0, 5),
+    [challenges]
   );
 
   const setField = (field, value) => setForm((p) => ({ ...p, [field]: value }));
@@ -215,7 +132,7 @@ function ChallengesPage() {
         <div className="ev-active-section">
           <h2 className="ev-section-subtitle">Mes challenges actifs</h2>
           <div className="ev-active-scroll">
-            {computedActiveChallenges.map((c) => (
+            {activeChallenges.map((c) => (
               <div key={c.id} className="ev-compact-card">
                 <p className="ev-compact-title">{c.title}</p>
                 <p className="ev-compact-points">
@@ -228,13 +145,13 @@ function ChallengesPage() {
                 <span className="ev-compact-pct">{c.progress}% complété</span>
               </div>
             ))}
+            {!activeChallenges.length && (
+              <p className="dashboard-empty">Aucun challenge en cours pour le moment.</p>
+            )}
           </div>
         </div>
 
-        <p className="ch-fallback-note">
-          Source actuelle: métriques réelles `myRanking/myEvents/myGroups` appliquées à une UI
-          challenge temporaire, en attendant une API challenge dédiée.
-        </p>
+        <p className="ch-fallback-note">Source actuelle: API challenges dédiée via gateway.</p>
       </section>
 
       {/* Modale création challenge */}

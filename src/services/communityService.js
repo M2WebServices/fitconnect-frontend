@@ -1,5 +1,5 @@
 import { gatewayRequest } from './graphqlClient.js';
-import { getAuthToken } from './authSession.js';
+import { requireAuthToken } from './serviceUtils.js';
 
 const MY_GROUPS_QUERY = `
   query MyGroups {
@@ -56,35 +56,27 @@ const JOIN_GROUP_MUTATION = `
   }
 `;
 
-function getTokenOrThrow() {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Session introuvable. Merci de vous reconnecter.');
-  }
-  return token;
-}
-
 export async function fetchMyGroups() {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   const payload = await gatewayRequest(MY_GROUPS_QUERY, {}, token);
   return payload.myGroups || [];
 }
 
 export async function fetchGroupById(id) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   const payload = await gatewayRequest(GROUP_QUERY, { id }, token);
   return payload.group;
 }
 
 export async function searchGroups(query) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   if (!query.trim()) return [];
   const payload = await gatewayRequest(SEARCH_GROUPS_QUERY, { query: query.trim() }, token);
   return payload.searchGroups || [];
 }
 
 export async function createGroup(name, description) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   const payload = await gatewayRequest(
     CREATE_GROUP_MUTATION,
     { name: name.trim(), description: description?.trim() || null },
@@ -94,6 +86,6 @@ export async function createGroup(name, description) {
 }
 
 export async function joinGroup(groupId) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   return gatewayRequest(JOIN_GROUP_MUTATION, { groupId }, token);
 }

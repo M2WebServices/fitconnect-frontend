@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import Sidebar from './components/Sidebar.jsx';
+import ToastViewport from './components/ToastViewport.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import CommunityPage from './pages/CommunityPage.jsx';
 import EventsPage from './pages/EventsPage.jsx';
@@ -15,6 +16,10 @@ import {
   readAuthSession,
   saveAuthSession,
 } from './services/authSession.js';
+import {
+  FITCONNECT_TOAST_EVENT,
+  FITCONNECT_UNAUTH_EVENT,
+} from './services/appEvents.js';
 
 const navItems = [
   { key: 'dashboard', label: 'Dashboard', icon: 'lucide:layout-dashboard' },
@@ -33,7 +38,16 @@ const FALLBACK_AVATAR =
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
   const [session, setSession] = useState(() => readAuthSession());
+  const [toasts, setToasts] = useState([]);
   const isAuthenticated = Boolean(session?.token);
+
+  const pushToast = useCallback((message, type = 'info') => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 4200);
+  }, []);
 
   const appUser = {
     name: session?.user?.pseudo || session?.user?.email || 'Utilisateur',
@@ -47,14 +61,40 @@ function App() {
     setActivePage('dashboard');
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     clearAuthSession();
     setSession(null);
     setActivePage('dashboard');
-  };
+  }, []);
+
+  useEffect(() => {
+    const onUnauthenticated = (event) => {
+      handleLogout();
+      pushToast(event?.detail?.message || 'Session expirée. Reconnectez-vous.', 'error');
+    };
+
+    const onToast = (event) => {
+      const detail = event?.detail || {};
+      if (!detail.message) return;
+      pushToast(detail.message, detail.type || 'info');
+    };
+
+    window.addEventListener(FITCONNECT_UNAUTH_EVENT, onUnauthenticated);
+    window.addEventListener(FITCONNECT_TOAST_EVENT, onToast);
+
+    return () => {
+      window.removeEventListener(FITCONNECT_UNAUTH_EVENT, onUnauthenticated);
+      window.removeEventListener(FITCONNECT_TOAST_EVENT, onToast);
+    };
+  }, [handleLogout, pushToast]);
 
   if (!isAuthenticated) {
-    return <AuthPage onAuthSuccess={handleAuthSuccess} />;
+    return (
+      <>
+        <AuthPage onAuthSuccess={handleAuthSuccess} />
+        <ToastViewport toasts={toasts} />
+      </>
+    );
   }
 
   const renderPage = () => {
@@ -81,19 +121,22 @@ function App() {
   };
 
   return (
-    <div className="dashboard">
-      <Sidebar
-        items={navItems}
-        activeKey={activePage}
-        user={appUser}
-        onNavigate={setActivePage}
-        onLogout={handleLogout}
-      />
+    <>
+      <div className="dashboard">
+        <Sidebar
+          items={navItems}
+          activeKey={activePage}
+          user={appUser}
+          onNavigate={setActivePage}
+          onLogout={handleLogout}
+        />
 
-      <main className={activePage === 'chat' ? 'dashboard-full' : 'dashboard-main'}>
-        {renderPage()}
-      </main>
-    </div>
+        <main className={activePage === 'chat' ? 'dashboard-full' : 'dashboard-main'}>
+          {renderPage()}
+        </main>
+      </div>
+      <ToastViewport toasts={toasts} />
+    </>
   );
 }
 

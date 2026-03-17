@@ -19,11 +19,11 @@ Déjà connecté au backend:
 - Ranking: `leaderboard`, `myRanking`
 - Chat: `myGroups`, `groupMessages`, `sendMessage`
 - Profile: `me`, `myRanking`, `myGroups`, `myEvents`
-- Planning: `myEvents`, `myGroups` (fallback en attendant API dédiée)
-- Challenges: fallback connecté sur `myRanking`, `myEvents`, `myGroups`
+- Planning: `myWorkoutSessions`, `completeWorkoutSession` (+ mapping `myEvents`/`myGroups`)
+- Challenges: `challenges`, `challengeParticipants`
 
 Encore en données mockées ou partiellement branché:
-- Challenges (partiel: pas d'API dédiée)
+- Aucun écran principal restant en fallback métier bloquant
 
 ## 1. Page Auth
 
@@ -120,18 +120,19 @@ Fichier: `src/pages/ChallengesPage.jsx`
 Etat actuel:
 - UI complète côté frontend
 - Filtres, cartes et modale déjà prêts
-- Fallback connecté au backend via `myRanking`, `myEvents`, `myGroups`
+- Données réelles chargées via `challenges`
+- Participants chargés via `challengeParticipants(challengeId)`
 - Etats loading / error affichés
 
 Ce qu'il manque pour finaliser:
-- Exposer une API challenge dédiée côté backend
-- Remplacer les progressions calculées localement par les vraies progressions métier
-- Connecter la création/inscription/résultats challenge dès que les mutations existent
+- Connecter la création/inscription challenge dès que les mutations existent
+- Remplacer les champs dérivés localement restants si le backend expose plus de détail métier
+- Ajouter résultats détaillés et actions utilisateur quand les mutations seront disponibles
 
 Blocage actuel:
-- Le schéma documenté ne fournit pas d'entités/mutations challenge explicites
+- Le backend expose la lecture challenge, mais pas encore de mutation challenge dédiée documentée
 
-Priorité: moyenne (en attente backend)
+Priorité: faible à moyenne
 
 ## 6. Page Chat
 
@@ -159,16 +160,15 @@ Priorité: moyenne
 
 Etat actuel:
 - Ecran dédié implémenté et routé
-- Données réelles via `myEvents` + `myGroups`
-- Filtres `À venir`, `Aujourd'hui`, `Passés`
+- Données réelles via `myWorkoutSessions(limit)`
+- Enregistrement d'une séance complétée via `completeWorkoutSession`
+- Mapping contextuel des labels événement/groupe via `myEvents` + `myGroups`
+- Filtres `Récentes`, `Aujourd'hui`, `Top calories`
 - Etats loading / empty / error gérés
 
 Ce qu'il manque pour finaliser:
-- Migrer vers une API planning/workout dédiée dès qu'elle est exposée
-- Ajouter actions de séance (démarrer, terminer, reporter) selon le backend final
-
-Blocage actuel:
-- Le backend documenté n'expose pas encore de requête planning/workout explicite
+- Ajouter le cycle complet des séances (création/modification/suppression planifiée) dès que les mutations dédiées existent
+- Ajouter un mode planification future (pas uniquement complétion)
 
 Priorité: faible à moyenne
 
@@ -205,16 +205,18 @@ Priorité: faible
 ## 10. Travaux transverses encore manquants
 
 Pour finaliser correctement le frontend, il reste aussi ces chantiers globaux:
-- Créer un client gateway réutilisable par page avec gestion d'erreur standardisée
-- Centraliser la gestion des erreurs `UNAUTHENTICATED`
 - Ajouter des hooks de données par domaine: auth, dashboard, community, events, chat, ranking
-- Sortir les données mockées restantes du code
-- Ajouter des vrais états skeleton ou loading UI sur toutes les pages
-- Ajouter des empty states cohérents
-- Ajouter des toasts ou retours utilisateur sur succès / erreur
+- Ajouter des vrais états skeleton UI sur toutes les pages
+- Ajouter des toasts de succès explicites sur les actions principales
 - Préparer des variables d'environnement `.env` pour les URLs backend
 - Ajouter tests minimum sur Auth et Dashboard
 - Ajouter gestion de route plus propre si le projet grossit
+
+Déjà réalisé côté transversal:
+- Client GraphQL centralisé avec gestion d'erreur standardisée
+- Gestion globale `UNAUTHENTICATED` (déconnexion et retour Auth automatiques)
+- Toasts globaux unifiés (`ToastViewport`)
+- Utilitaire de token partagé (`serviceUtils`) et normalisation des services
 
 ## Ordre recommandé pour terminer le projet
 

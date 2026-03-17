@@ -1,5 +1,5 @@
 import { gatewayRequest } from './graphqlClient.js';
-import { getAuthToken } from './authSession.js';
+import { requireAuthToken } from './serviceUtils.js';
 
 const MY_GROUPS_QUERY = `
   query MyGroups {
@@ -51,16 +51,8 @@ const SEND_MESSAGE_MUTATION = `
   }
 `;
 
-function getTokenOrThrow() {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Session introuvable. Merci de vous reconnecter.');
-  }
-  return token;
-}
-
 export async function fetchChatBootstrap() {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
 
   const [{ me }, { myGroups }] = await Promise.all([
     gatewayRequest(ME_QUERY, {}, token),
@@ -103,7 +95,7 @@ export async function fetchChatBootstrap() {
 }
 
 export async function fetchGroupMessages(groupId, limit = 50) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   const payload = await gatewayRequest(
     GROUP_MESSAGES_QUERY,
     { groupId, limit },
@@ -113,7 +105,7 @@ export async function fetchGroupMessages(groupId, limit = 50) {
 }
 
 export async function sendGroupMessage(groupId, content) {
-  const token = getTokenOrThrow();
+  const token = requireAuthToken();
   return gatewayRequest(
     SEND_MESSAGE_MUTATION,
     { groupId, content },
