@@ -16,6 +16,7 @@ Déjà connecté au backend:
 - Dashboard: `me`, `myRanking`, `myGroups`, `myEvents`
 - Events: `myEvents`, `groupEvents`, `createEvent`, `joinEvent`
 - Community: `myGroups`, `group(id)`, `searchGroups`, `createGroup`, `joinGroup`
+- Community (admin): `updateGroup`, `deleteGroup`, `addGroupMember`, `removeGroupMember`, `leaveGroup`
 - Ranking: `leaderboard`, `myRanking`
 - Chat: `myGroups`, `groupMessages`, `sendMessage`
 - Profile: `me`, `myRanking`, `myGroups`, `myEvents`
@@ -81,11 +82,12 @@ Etat actuel:
 - Recherche de groupes réelle
 - Création de groupe réelle
 - Rejoindre un groupe réel
+- Gestion du groupe réel: modifier, quitter, supprimer
+- Gestion membres réelle: ajout/retrait via mutations admin
 
 Ce qu'il manque pour finaliser:
 - Remplacer les champs dérivés localement (points/titres) par des données backend réelles si elles existent
-- Implémenter l'invitation de membre si une mutation dédiée est disponible
-- Ajouter actions avancées de gestion de groupe (leaveGroup, updateGroup, deleteGroup) selon les droits
+- Ajouter une UX de recherche utilisateur pour éviter la saisie manuelle du `userId` lors de l'ajout membre
 
 Point d'attention:
 - Le schéma actuel ne fournit pas de score/titre membre dans `group.members`, donc certaines colonnes sont encore calculées côté frontend

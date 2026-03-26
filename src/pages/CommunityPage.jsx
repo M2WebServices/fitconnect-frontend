@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Modal from '../components/Modal.jsx';
 import {
+  addGroupMember,
   createGroup,
+  deleteGroup,
   fetchGroupById,
   fetchMyGroups,
   joinGroup,
+  leaveGroup,
+  removeGroupMember,
   searchGroups,
+  updateGroup,
 } from '../services/communityService.js';
 
 const FALLBACK_MEMBER_AVATAR =
@@ -23,6 +28,11 @@ function pseudoPoints(seedText) {
   return 1000 + ((seed * 37) % 9000);
 }
 
+function isForbiddenError(errorMessage) {
+  const text = (errorMessage || '').toUpperCase();
+  return text.includes('FORBIDDEN') || text.includes('NOT AUTHORIZED');
+}
+
 function CommunityPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalLoading, setIsModalLoading] = useState(false);
@@ -31,30 +41,64 @@ function CommunityPage() {
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [showManageGroupModal, setShowManageGroupModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [discoverQuery, setDiscoverQuery] = useState('');
   const [discoverResults, setDiscoverResults] = useState([]);
   const [joiningGroupId, setJoiningGroupId] = useState('');
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [memberActionUserId, setMemberActionUserId] = useState('');
+  const [adminDeniedByGroupId, setAdminDeniedByGroupId] = useState({});
   const [form, setForm] = useState({ name: '', description: '' });
+  const [groupForm, setGroupForm] = useState({ name: '', description: '' });
+  const [memberForm, setMemberForm] = useState({ userId: '', role: 'MEMBER' });
 
-  const loadMyGroups = async () => {
+  const canManageSelectedGroup =
+    !!selectedGroupId && adminDeniedByGroupId[selectedGroupId] !== true;
+
+  const loadMyGroups = useCallback(async () => {
     setIsLoading(true);
     setError('');
 
     try {
       const myGroups = await fetchMyGroups();
       setGroups(myGroups);
-      setSelectedGroupId((prev) => prev || myGroups[0]?.id || '');
+      setSelectedGroupId((prev) => {
+        if (!myGroups.length) return '';
+        const stillExists = myGroups.some((group) => group.id === prev);
+        return stillExists ? prev : myGroups[0].id;
+      });
     } catch (loadError) {
       setError(loadError.message || 'Impossible de charger vos groupes.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadMyGroups();
-  }, []);
+  }, [loadMyGroups]);
+
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      loadMyGroups();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadMyGroups();
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadMyGroups]);
 
   useEffect(() => {
     if (!selectedGroupId) {
@@ -86,6 +130,13 @@ function CommunityPage() {
   }, [selectedGroupId]);
 
   const members = selectedGroup?.members || [];
+
+  useEffect(() => {
+    setGroupForm({
+      name: selectedGroup?.name || '',
+      description: selectedGroup?.description || '',
+    });
+  }, [selectedGroup]);
 
   const filteredMembers = useMemo(
     () =>
@@ -140,6 +191,113 @@ function CommunityPage() {
     }
   };
 
+  const handleUpdateGroup = async () => {
+    if (!selectedGroupId) return;
+    if (!groupForm.name.trim()) {
+      setError('Le nom du groupe est obligatoire.');
+      return;
+    }
+
+    setIsActionLoading(true);
+    setError('');
+    try {
+      await updateGroup(selectedGroupId, groupForm.name, groupForm.description);
+      setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: false }));
+      setShowManageGroupModal(false);
+      await loadMyGroups();
+      const updated = await fetchGroupById(selectedGroupId);
+      setSelectedGroup(updated);
+    } catch (updateError) {
+      if (isForbiddenError(updateError.message)) {
+        setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: true }));
+      }
+      setError(updateError.message || 'Impossible de modifier le groupe.');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroupId) return;
+    setIsActionLoading(true);
+    setError('');
+    try {
+      await deleteGroup(selectedGroupId);
+      setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: false }));
+      setShowManageGroupModal(false);
+      setSelectedGroupId('');
+      await loadMyGroups();
+    } catch (deleteError) {
+      if (isForbiddenError(deleteError.message)) {
+        setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: true }));
+      }
+      setError(deleteError.message || 'Impossible de supprimer le groupe.');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!selectedGroupId) return;
+    setIsActionLoading(true);
+    setError('');
+    try {
+      await leaveGroup(selectedGroupId);
+      setShowManageGroupModal(false);
+      setSelectedGroupId('');
+      await loadMyGroups();
+    } catch (leaveError) {
+      setError(leaveError.message || 'Impossible de quitter ce groupe.');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleAddMember = async () => {
+    if (!selectedGroupId) return;
+    if (!memberForm.userId.trim()) {
+      setError('Le userId est obligatoire pour ajouter un membre.');
+      return;
+    }
+
+    setIsActionLoading(true);
+    setError('');
+    try {
+      await addGroupMember(selectedGroupId, memberForm.userId, memberForm.role);
+      setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: false }));
+      setShowAddMemberModal(false);
+      setMemberForm({ userId: '', role: 'MEMBER' });
+      const group = await fetchGroupById(selectedGroupId);
+      setSelectedGroup(group);
+    } catch (addError) {
+      if (isForbiddenError(addError.message)) {
+        setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: true }));
+      }
+      setError(addError.message || 'Impossible d ajouter ce membre.');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId) => {
+    if (!selectedGroupId) return;
+    setMemberActionUserId(userId);
+    setError('');
+    try {
+      await removeGroupMember(selectedGroupId, userId);
+      setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: false }));
+      const group = await fetchGroupById(selectedGroupId);
+      setSelectedGroup(group);
+    } catch (removeError) {
+      if (isForbiddenError(removeError.message)) {
+        setAdminDeniedByGroupId((prev) => ({ ...prev, [selectedGroupId]: true }));
+      }
+      setError(removeError.message || 'Impossible de retirer ce membre.');
+    } finally {
+      setMemberActionUserId('');
+    }
+  };
+
   return (
     <div className="community-page">
       {error && <p className="dashboard-status dashboard-status-error">{error}</p>}
@@ -155,6 +313,10 @@ function CommunityPage() {
           </p>
         </div>
         <div className="community-hero-actions">
+          <button className="btn btn-outline-light" onClick={loadMyGroups}>
+            <Icon name="lucide:refresh-cw" size={16} />
+            Actualiser
+          </button>
           <button
             className="btn btn-outline-light"
             onClick={() => setShowCreateGroupModal(true)}
@@ -162,9 +324,13 @@ function CommunityPage() {
             <Icon name="lucide:user-plus" size={16} />
             Créer un groupe
           </button>
-          <button className="btn btn-outline-light" disabled={!selectedGroupId}>
+          <button
+            className="btn btn-outline-light"
+            disabled={!canManageSelectedGroup}
+            onClick={() => setShowManageGroupModal(true)}
+          >
             <Icon name="lucide:settings-2" size={16} />
-            Groupe sélectionné
+            Gérer le groupe
           </button>
         </div>
       </header>
@@ -183,6 +349,12 @@ function CommunityPage() {
           </select>
         </div>
       </div>
+
+      {!canManageSelectedGroup && !!selectedGroupId && (
+        <p className="dashboard-status">
+          Ce compte n'a pas les droits ADMIN sur ce groupe. Les actions d'administration sont désactivées.
+        </p>
+      )}
 
       {/* Stats Cards */}
       <div className="community-stats">
@@ -213,6 +385,14 @@ function CommunityPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <button
+            className="btn btn-outline-light"
+            disabled={!canManageSelectedGroup}
+            onClick={() => setShowAddMemberModal(true)}
+          >
+            <Icon name="lucide:user-round-plus" size={16} />
+            Ajouter membre
+          </button>
         </div>
 
         <div className="members-table-card">
@@ -253,7 +433,13 @@ function CommunityPage() {
                     <span className="badge badge-title">{memberTitleFromIndex(index)}</span>
                   </td>
                   <td className="text-right">
-                    <button className="link-button">Voir le profil</button>
+                    <button
+                      className="link-button"
+                      onClick={() => handleRemoveMember(member.id)}
+                      disabled={memberActionUserId === member.id || !canManageSelectedGroup}
+                    >
+                      {memberActionUserId === member.id ? 'Retrait...' : 'Retirer'}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -349,6 +535,79 @@ function CommunityPage() {
             className="btn-secondary-text"
             onClick={() => setShowCreateGroupModal(false)}
           >
+            Annuler
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showManageGroupModal}
+        onClose={() => setShowManageGroupModal(false)}
+        title="Gérer le groupe"
+        description="Modifier le groupe, le quitter ou le supprimer selon vos droits."
+      >
+        <div className="modal-field">
+          <label className="field-label">Nom du groupe</label>
+          <input
+            className="field-input-text"
+            placeholder="Nom du groupe"
+            value={groupForm.name}
+            onChange={(e) => setGroupForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+        </div>
+        <div className="modal-field">
+          <label className="field-label">Description</label>
+          <textarea
+            className="field-input-text ev-textarea"
+            placeholder="Description"
+            value={groupForm.description}
+            onChange={(e) => setGroupForm((prev) => ({ ...prev, description: e.target.value }))}
+          />
+        </div>
+        <div className="modal-actions">
+          <button className="btn-primary-full" onClick={handleUpdateGroup} disabled={isActionLoading}>
+            {isActionLoading ? 'Mise à jour...' : 'Mettre à jour'}
+          </button>
+          <button className="btn-secondary-text" onClick={handleLeaveGroup} disabled={isActionLoading}>
+            Quitter le groupe
+          </button>
+          <button className="btn-secondary-text" onClick={handleDeleteGroup} disabled={isActionLoading}>
+            Supprimer le groupe
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showAddMemberModal}
+        onClose={() => setShowAddMemberModal(false)}
+        title="Ajouter un membre"
+        description="Ajout direct via userId (mutation admin addGroupMember)."
+      >
+        <div className="modal-field">
+          <label className="field-label">User ID</label>
+          <input
+            className="field-input-text"
+            placeholder="Ex: user-123"
+            value={memberForm.userId}
+            onChange={(e) => setMemberForm((prev) => ({ ...prev, userId: e.target.value }))}
+          />
+        </div>
+        <div className="modal-field">
+          <label className="field-label">Rôle</label>
+          <select
+            className="field-input-text"
+            value={memberForm.role}
+            onChange={(e) => setMemberForm((prev) => ({ ...prev, role: e.target.value }))}
+          >
+            <option value="MEMBER">MEMBER</option>
+            <option value="ADMIN">ADMIN</option>
+          </select>
+        </div>
+        <div className="modal-actions">
+          <button className="btn-primary-full" onClick={handleAddMember} disabled={isActionLoading}>
+            {isActionLoading ? 'Ajout...' : 'Ajouter'}
+          </button>
+          <button className="btn-secondary-text" onClick={() => setShowAddMemberModal(false)}>
             Annuler
           </button>
         </div>
