@@ -1,6 +1,10 @@
 import SidebarNavItem from './SidebarNavItem.jsx';
 import Icon from './Icon.jsx';
 
+function getInitials(name) {
+  return (name || '??').trim().slice(0, 2).toUpperCase();
+}
+
 function Sidebar({ items, activeKey, user, onNavigate, onLogout }) {
   return (
     <aside className="sidebar">
@@ -22,7 +26,9 @@ function Sidebar({ items, activeKey, user, onNavigate, onLogout }) {
       </nav>
 
       <div className="sidebar-footer">
-        <img className="sidebar-avatar" src={user.avatar} alt={user.name} />
+        <div className="sidebar-avatar sidebar-avatar-initials">
+          {getInitials(user.name)}
+        </div>
         <div className="sidebar-user">
           <span className="sidebar-user-name">{user.name}</span>
           <button className="sidebar-logout" onClick={onLogout}>Deconnexion</button>

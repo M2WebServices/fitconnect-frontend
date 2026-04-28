@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import {
   fetchChatBootstrap,
+  fetchChatRealtimeConfig,
   fetchGroupMessages,
   sendGroupMessage,
 } from '../services/chatService.js';
@@ -49,7 +50,10 @@ function ChatPage() {
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [isRealtime, setIsRealtime] = useState(false);
   const messagesEndRef = useRef(null);
+  const wsRef = useRef(null);
+  const realtimeConfigRef = useRef(null);
 
   const selectedConversation = useMemo(
     () => conversations.find((conv) => conv.id === selectedGroupId) || null,
@@ -64,6 +68,11 @@ function ChatPage() {
       setCurrentUser(bootstrap.me || null);
       setConversations(bootstrap.conversations || []);
       setSelectedGroupId((prev) => prev || bootstrap.conversations?.[0]?.id || '');
+
+      const config = await fetchChatRealtimeConfig().catch(() => null);
+      if (config?.wsUrl) {
+        realtimeConfigRef.current = config;
+      }
     } catch (loadError) {
       setError(loadError.message || 'Impossible de charger le chat.');
     } finally {
@@ -108,9 +117,55 @@ function ChatPage() {
     if (!selectedGroupId || !currentUser?.id) return;
 
     loadMessages(selectedGroupId);
+
+    const config = realtimeConfigRef.current;
+
+    if (config?.wsUrl) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
+      const ws = new WebSocket(config.wsUrl);
+      wsRef.current = ws;
+
+      let heartbeatTimer = null;
+
+      ws.onopen = () => {
+        setIsRealtime(true);
+        heartbeatTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, (config.heartbeatSeconds || 30) * 1000);
+      };
+
+      ws.onmessage = () => {
+        loadMessages(selectedGroupId);
+      };
+
+      ws.onerror = () => {
+        setIsRealtime(false);
+      };
+
+      ws.onclose = () => {
+        setIsRealtime(false);
+        clearInterval(heartbeatTimer);
+      };
+
+      return () => {
+        clearInterval(heartbeatTimer);
+        ws.close();
+        wsRef.current = null;
+        setIsRealtime(false);
+      };
+    }
+
+    // Fallback: polling
+    const intervalMs = config?.heartbeatSeconds ? config.heartbeatSeconds * 1000 : 8000;
     const timer = setInterval(() => {
       loadMessages(selectedGroupId);
-    }, 8000);
+    }, intervalMs);
 
     return () => clearInterval(timer);
   }, [selectedGroupId, currentUser?.id]);
@@ -171,7 +226,10 @@ function ChatPage() {
         </div>
         <div className="chat-left-footer">
           <span className="chat-pulse-dot" />
-          <span className="chat-online-label">Sync auto toutes les 8 sec</span>
+          {isRealtime
+            ? <span className="chat-online-label">Temps réel actif</span>
+            : <span className="chat-online-label">Sync auto</span>
+          }
         </div>
       </div>
 

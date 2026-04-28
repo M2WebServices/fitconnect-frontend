@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import Sidebar from './components/Sidebar.jsx';
 import ToastViewport from './components/ToastViewport.jsx';
@@ -20,6 +20,7 @@ import {
   FITCONNECT_TOAST_EVENT,
   FITCONNECT_UNAUTH_EVENT,
 } from './services/appEvents.js';
+import { startNotificationListener } from './services/notificationService.js';
 
 const navItems = [
   { key: 'dashboard', label: 'Dashboard', icon: 'lucide:layout-dashboard' },
@@ -32,14 +33,13 @@ const navItems = [
   { key: 'profile', label: 'Profil', icon: 'lucide:user' },
 ];
 
-const FALLBACK_AVATAR =
-  'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F25-35%2FEuropean%2F2';
-
 function App() {
   const [activePage, setActivePage] = useState('dashboard');
   const [session, setSession] = useState(() => readAuthSession());
   const [toasts, setToasts] = useState([]);
   const isAuthenticated = Boolean(session?.token);
+
+  const stopNotificationsRef = useRef(() => {});
 
   const pushToast = useCallback((message, type = 'info') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -49,9 +49,12 @@ function App() {
     }, 4200);
   }, []);
 
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
+
   const appUser = {
     name: session?.user?.pseudo || session?.user?.email || 'Utilisateur',
-    avatar: FALLBACK_AVATAR,
   };
 
   const handleAuthSuccess = ({ token, user }) => {
@@ -66,6 +69,23 @@ function App() {
     setSession(null);
     setActivePage('dashboard');
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      stopNotificationsRef.current();
+      stopNotificationsRef.current = () => {};
+      return;
+    }
+
+    startNotificationListener((message, type) => pushToast(message, type)).then((stop) => {
+      stopNotificationsRef.current = stop;
+    });
+
+    return () => {
+      stopNotificationsRef.current();
+      stopNotificationsRef.current = () => {};
+    };
+  }, [isAuthenticated, pushToast]);
 
   useEffect(() => {
     const onUnauthenticated = (event) => {
@@ -92,7 +112,7 @@ function App() {
     return (
       <>
         <AuthPage onAuthSuccess={handleAuthSuccess} />
-        <ToastViewport toasts={toasts} />
+        <ToastViewport toasts={toasts} onDismiss={dismissToast} />
       </>
     );
   }
@@ -135,7 +155,7 @@ function App() {
           {renderPage()}
         </main>
       </div>
-      <ToastViewport toasts={toasts} />
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </>
   );
 }

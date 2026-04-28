@@ -39,6 +39,16 @@ const GROUP_MESSAGES_QUERY = `
   }
 `;
 
+const CHAT_REALTIME_CONFIG_QUERY = `
+  query ChatRealtimeConfig {
+    chatRealtimeConfig {
+      wsUrl
+      events
+      heartbeatSeconds
+    }
+  }
+`;
+
 const SEND_MESSAGE_MUTATION = `
   mutation SendMessage($groupId: ID!, $content: String!) {
     sendMessage(groupId: $groupId, content: $content) {
@@ -48,6 +58,12 @@ const SEND_MESSAGE_MUTATION = `
       groupId
       createdAt
     }
+  }
+`;
+
+const DELETE_MESSAGE_MUTATION = `
+  mutation DeleteMessage($id: ID!) {
+    deleteMessage(id: $id)
   }
 `;
 
@@ -104,6 +120,12 @@ export async function fetchGroupMessages(groupId, limit = 50) {
   return payload.groupMessages || [];
 }
 
+export async function fetchChatRealtimeConfig() {
+  const token = requireAuthToken();
+  const payload = await gatewayRequest(CHAT_REALTIME_CONFIG_QUERY, {}, token);
+  return payload.chatRealtimeConfig;
+}
+
 export async function sendGroupMessage(groupId, content) {
   const token = requireAuthToken();
   return gatewayRequest(
@@ -111,4 +133,9 @@ export async function sendGroupMessage(groupId, content) {
     { groupId, content },
     token
   );
+}
+
+export async function deleteMessage(id) {
+  const token = requireAuthToken();
+  return gatewayRequest(DELETE_MESSAGE_MUTATION, { id }, token);
 }

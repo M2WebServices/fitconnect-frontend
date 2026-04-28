@@ -1,3 +1,4 @@
+import { emitSuccess } from './appEvents.js';
 import { gatewayRequest } from './graphqlClient.js';
 import { requireAuthToken } from './serviceUtils.js';
 
@@ -163,17 +164,22 @@ export async function createGroup(name, description) {
     { name: name.trim(), description: description?.trim() || null },
     token
   );
+  emitSuccess('Groupe créé avec succès.');
   return payload.createGroup;
 }
 
 export async function joinGroup(groupId) {
   const token = requireAuthToken();
-  return gatewayRequest(JOIN_GROUP_MUTATION, { groupId }, token);
+  const result = await gatewayRequest(JOIN_GROUP_MUTATION, { groupId }, token);
+  emitSuccess('Groupe rejoint.');
+  return result;
 }
 
 export async function leaveGroup(groupId) {
   const token = requireAuthToken();
-  return gatewayRequest(LEAVE_GROUP_MUTATION, { groupId }, token);
+  const result = await gatewayRequest(LEAVE_GROUP_MUTATION, { groupId }, token);
+  emitSuccess('Vous avez quitté le groupe.');
+  return result;
 }
 
 export async function updateGroup(id, name, description) {

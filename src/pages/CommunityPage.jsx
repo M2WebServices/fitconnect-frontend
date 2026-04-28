@@ -13,19 +13,19 @@ import {
   searchGroups,
   updateGroup,
 } from '../services/communityService.js';
+import { fetchRankingData } from '../services/rankingService.js';
 
-const FALLBACK_MEMBER_AVATAR =
-  'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F25-35%2FEuropean%2F2';
-
-function memberTitleFromIndex(index) {
-  if (index === 0) return 'Leader';
-  if (index < 3) return 'Actif';
-  return 'Membre';
+function getInitials(name) {
+  return (name || '??').trim().slice(0, 2).toUpperCase();
 }
 
-function pseudoPoints(seedText) {
-  const seed = (seedText || '').split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return 1000 + ((seed * 37) % 9000);
+function memberTitleFromScore(score) {
+  if (!score) return 'Débutant';
+  if (score >= 8000) return 'Légende';
+  if (score >= 5000) return 'Expert';
+  if (score >= 2000) return 'Compétiteur';
+  if (score >= 500) return 'Actif';
+  return 'Débutant';
 }
 
 function isForbiddenError(errorMessage) {
@@ -50,6 +50,7 @@ function CommunityPage() {
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [memberActionUserId, setMemberActionUserId] = useState('');
   const [adminDeniedByGroupId, setAdminDeniedByGroupId] = useState({});
+  const [scoreByUserId, setScoreByUserId] = useState(new Map());
   const [form, setForm] = useState({ name: '', description: '' });
   const [groupForm, setGroupForm] = useState({ name: '', description: '' });
   const [memberForm, setMemberForm] = useState({ userId: '', role: 'MEMBER' });
@@ -79,6 +80,15 @@ function CommunityPage() {
   useEffect(() => {
     loadMyGroups();
   }, [loadMyGroups]);
+
+  useEffect(() => {
+    fetchRankingData(100)
+      .then(({ leaderboard }) => {
+        const map = new Map(leaderboard.map((entry) => [entry.userId, entry.score]));
+        setScoreByUserId(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleWindowFocus = () => {
@@ -407,30 +417,30 @@ function CommunityPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredMembers.map((member, index) => (
+              {filteredMembers.map((member, index) => {
+                const score = scoreByUserId.get(member.id);
+                return (
                 <tr key={member.id}>
                   <td>
                     <div className="member-cell">
-                      <img
-                        src={FALLBACK_MEMBER_AVATAR}
-                        alt={member.username || member.email}
-                        className="member-avatar"
-                      />
+                      <div className="member-avatar member-avatar-initials">
+                        {getInitials(member.username || member.email)}
+                      </div>
                       <span className="member-name">{member.username || member.email}</span>
                     </div>
                   </td>
                   <td>
-                    <span
-                      className={`badge ${
-                        index === 0 ? 'badge-admin' : 'badge-member'
-                      }`}
-                    >
+                    <span className={`badge ${index === 0 ? 'badge-admin' : 'badge-member'}`}>
                       {index === 0 ? 'Admin' : 'Membre'}
                     </span>
                   </td>
-                  <td>{pseudoPoints(member.id).toLocaleString('fr-FR')}</td>
                   <td>
-                    <span className="badge badge-title">{memberTitleFromIndex(index)}</span>
+                    {score !== undefined
+                      ? score.toLocaleString('fr-FR')
+                      : <span style={{ color: '#94a3b8' }}>—</span>}
+                  </td>
+                  <td>
+                    <span className="badge badge-title">{memberTitleFromScore(score)}</span>
                   </td>
                   <td className="text-right">
                     <button
@@ -442,7 +452,7 @@ function CommunityPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              ); })}
               {!filteredMembers.length && (
                 <tr>
                   <td colSpan="5" className="table-empty">Aucun membre trouvé pour ce filtre.</td>

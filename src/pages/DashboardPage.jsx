@@ -5,8 +5,9 @@ import ListRow from '../components/ListRow.jsx';
 import Icon from '../components/Icon.jsx';
 import { fetchDashboardData } from '../services/dashboardService.js';
 
-const FALLBACK_AVATAR =
-  'https://storage.googleapis.com/banani-avatars/avatar%2Fmale%2F25-35%2FEuropean%2F2';
+function getInitials(name) {
+  return (name || '??').trim().slice(0, 2).toUpperCase();
+}
 
 function formatEventDate(dateValue) {
   if (!dateValue) return 'Date a confirmer';
@@ -85,7 +86,6 @@ function DashboardPage() {
   const profile = useMemo(
     () => ({
       name: me?.username || me?.email || 'Utilisateur',
-      avatar: FALLBACK_AVATAR,
       title: getProfileTitle(ranking?.rank),
       points: new Intl.NumberFormat('fr-FR').format(ranking?.score || 0),
       progress: getProgressFromRanking(ranking?.score),
@@ -145,7 +145,7 @@ function DashboardPage() {
       <div className="dashboard-grid">
         <Card title="Mon profil rapide" icon="lucide:user-circle">
           <div className="profile-card">
-            <img className="profile-avatar" src={profile.avatar} alt={profile.name} />
+            <div className="profile-avatar profile-avatar-initials">{getInitials(profile.name)}</div>
             <div className="profile-details">
               <p className="profile-name">{profile.name}</p>
               <span className="badge badge-accent">{profile.title}</span>

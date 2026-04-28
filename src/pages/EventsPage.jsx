@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Modal from '../components/Modal.jsx';
-import { createEvent, fetchEventsPageData, joinEvent } from '../services/eventsService.js';
+import {
+  createEvent,
+  deleteEvent,
+  fetchEventParticipants,
+  fetchEventsPageData,
+  joinEvent,
+} from '../services/eventsService.js';
 
 const EVENT_TABS = ['Tous', 'Mes inscriptions', 'À venir', 'Passés'];
 
@@ -47,7 +53,7 @@ function formatLongDate(dateValue) {
   });
 }
 
-function EventCard({ event, onJoin, isJoining }) {
+function EventCard({ event, onJoin, isJoining, onViewParticipants, onDelete }) {
   const { dateLabel, timeLabel } = formatBannerDate(event.date);
   return (
     <div className="ev-card">
@@ -76,6 +82,16 @@ function EventCard({ event, onJoin, isJoining }) {
             {isJoining ? 'Inscription...' : 'Participer'}
           </button>
         )}
+        <div className="ev-card-footer-actions">
+          <button className="ev-action-link" onClick={() => onViewParticipants(event)}>
+            <Icon name="lucide:users" size={14} />
+            Participants
+          </button>
+          <button className="ev-action-link ev-action-link-danger" onClick={() => onDelete(event.id)}>
+            <Icon name="lucide:trash-2" size={14} />
+            Supprimer
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -99,6 +115,11 @@ function EventsPage() {
     location: '',
     capacity: '',
   });
+
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [participants, setParticipants] = useState([]);
+  const [isLoadingParticipants, setIsLoadingParticipants] = useState(false);
 
   const loadEvents = async () => {
     setIsLoading(true);
@@ -185,6 +206,32 @@ function EventsPage() {
     }
   };
 
+  const handleViewParticipants = async (event) => {
+    setSelectedEvent(event);
+    setParticipants([]);
+    setShowParticipantsModal(true);
+    setIsLoadingParticipants(true);
+    try {
+      const list = await fetchEventParticipants(event.id);
+      setParticipants(list);
+    } catch {
+      setParticipants([]);
+    } finally {
+      setIsLoadingParticipants(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId) => {
+    if (!window.confirm('Supprimer cet événement ?')) return;
+    setError('');
+    try {
+      await deleteEvent(eventId);
+      await loadEvents();
+    } catch (deleteError) {
+      setError(deleteError.message || 'Suppression impossible.');
+    }
+  };
+
   const setField = (field, value) => setForm((p) => ({ ...p, [field]: value }));
 
   return (
@@ -210,6 +257,8 @@ function EventsPage() {
                 event={event}
                 onJoin={handleJoinEvent}
                 isJoining={joiningEventId === event.id}
+                onViewParticipants={handleViewParticipants}
+                onDelete={handleDeleteEvent}
               />
             ))
           ) : (
@@ -268,6 +317,31 @@ function EventsPage() {
             {isSubmitting ? 'Creation...' : "Créer l'événement"}
           </button>
           <button className="btn-secondary-text" onClick={() => setShowModal(false)}>Annuler</button>
+        </div>
+      </Modal>
+
+      {/* Modale participants */}
+      <Modal
+        isOpen={showParticipantsModal}
+        onClose={() => setShowParticipantsModal(false)}
+        title={`Participants — ${selectedEvent?.title || ''}`}
+      >
+        {isLoadingParticipants && <p className="dashboard-status">Chargement...</p>}
+        {!isLoadingParticipants && !participants.length && (
+          <p className="dashboard-empty">Aucun participant pour cet événement.</p>
+        )}
+        {!isLoadingParticipants && participants.length > 0 && (
+          <div className="stack">
+            {participants.map((p) => (
+              <div className="profile-list-row" key={p.userId}>
+                <Icon name="lucide:user" size={16} />
+                <span>{p.user?.username || p.user?.email || p.userId}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="modal-actions">
+          <button className="btn-secondary-text" onClick={() => setShowParticipantsModal(false)}>Fermer</button>
         </div>
       </Modal>
     </div>

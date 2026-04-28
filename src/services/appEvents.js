@@ -16,3 +16,7 @@ export function emitToast(message, type = 'info') {
     })
   );
 }
+
+export function emitSuccess(message) {
+  emitToast(message, 'success');
+}

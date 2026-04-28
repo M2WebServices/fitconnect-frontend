@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import Card from '../components/Card.jsx';
 import Icon from '../components/Icon.jsx';
-import { fetchProfileData } from '../services/profileService.js';
+import Modal from '../components/Modal.jsx';
+import { fetchProfileData, updateMyProfile } from '../services/profileService.js';
 
-const FALLBACK_AVATAR =
-  'https://storage.googleapis.com/banani-avatars/avatar%2Ffemale%2F25-35%2FEuropean%2F1';
+function getInitials(name) {
+  return (name || '??').trim().slice(0, 2).toUpperCase();
+}
 
 function scoreLabel(value) {
   return new Intl.NumberFormat('fr-FR').format(value || 0);
@@ -19,6 +21,10 @@ function ProfilePage() {
     myGroups: [],
     myEvents: [],
   });
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ email: '', pseudo: '' });
+  const [isSaving, setIsSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -59,6 +65,29 @@ function ProfilePage() {
     [profileData.myEvents]
   );
 
+  const openEditModal = () => {
+    setEditForm({
+      email: profileData.me?.email || '',
+      pseudo: profileData.me?.username || '',
+    });
+    setEditError('');
+    setShowEditModal(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    setEditError('');
+    try {
+      const updated = await updateMyProfile({ email: editForm.email, pseudo: editForm.pseudo });
+      setProfileData((prev) => ({ ...prev, me: updated }));
+      setShowEditModal(false);
+    } catch (saveError) {
+      setEditError(saveError.message || 'Impossible de mettre à jour le profil.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="profile-page">
       {error && <p className="dashboard-status dashboard-status-error">{error}</p>}
@@ -66,7 +95,7 @@ function ProfilePage() {
 
       <Card title="Mon profil" icon="lucide:user-circle">
         <div className="profile-main-row">
-          <img className="profile-main-avatar" src={FALLBACK_AVATAR} alt={pseudo} />
+          <div className="profile-main-avatar profile-main-avatar-initials">{getInitials(pseudo)}</div>
           <div className="profile-main-content">
             <h2 className="profile-main-name">{pseudo}</h2>
             <p className="profile-main-email">{profileData.me?.email || '-'}</p>
@@ -77,6 +106,10 @@ function ProfilePage() {
               <span className="badge badge-member">{scoreLabel(profileData.myRanking?.score)} pts</span>
             </div>
           </div>
+          <button className="btn-secondary-text" onClick={openEditModal}>
+            <Icon name="lucide:pencil" size={16} />
+            Modifier
+          </button>
         </div>
       </Card>
 
@@ -122,6 +155,33 @@ function ProfilePage() {
           {!recentEvents.length && <p className="dashboard-empty">Aucun événement récent.</p>}
         </div>
       </Card>
+
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Modifier mon profil">
+        {editError && <p className="dashboard-status dashboard-status-error">{editError}</p>}
+        <div className="ev-form-group">
+          <label className="field-label">Email</label>
+          <input
+            className="field-input-text"
+            type="email"
+            value={editForm.email}
+            onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
+          />
+        </div>
+        <div className="ev-form-group">
+          <label className="field-label">Pseudo</label>
+          <input
+            className="field-input-text"
+            value={editForm.pseudo}
+            onChange={(e) => setEditForm((p) => ({ ...p, pseudo: e.target.value }))}
+          />
+        </div>
+        <div className="modal-actions">
+          <button className="btn-primary-full" onClick={handleSaveProfile} disabled={isSaving}>
+            {isSaving ? 'Sauvegarde...' : 'Enregistrer'}
+          </button>
+          <button className="btn-secondary-text" onClick={() => setShowEditModal(false)}>Annuler</button>
+        </div>
+      </Modal>
     </div>
   );
 }

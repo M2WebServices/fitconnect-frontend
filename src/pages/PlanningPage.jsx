@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import Card from '../components/Card.jsx';
 import Icon from '../components/Icon.jsx';
 import Modal from '../components/Modal.jsx';
-import { emitToast } from '../services/appEvents.js';
 import { completeWorkoutSession, fetchPlanningData } from '../services/planningService.js';
 
 function formatDate(dateValue) {
@@ -31,6 +30,7 @@ function PlanningPage() {
   const [events, setEvents] = useState([]);
   const [groups, setGroups] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('Enregistrer une séance');
   const [activeFilter, setActiveFilter] = useState('recent');
   const [form, setForm] = useState({
     workoutSessionId: '',
@@ -80,6 +80,35 @@ function PlanningPage() {
     return workouts;
   }, [workouts, activeFilter]);
 
+  const openNewModal = () => {
+    setModalTitle('Enregistrer une séance');
+    setForm((prev) => ({
+      workoutSessionId: '',
+      durationMinutes: '',
+      caloriesBurned: '',
+      eventId: prev.eventId,
+      groupId: prev.groupId,
+    }));
+    setShowModal(true);
+  };
+
+  const openFinalizeModal = (workout) => {
+    setModalTitle('Finaliser la séance');
+    setForm({
+      workoutSessionId: workout.workoutSessionId,
+      durationMinutes: workout.durationMinutes != null ? String(workout.durationMinutes) : '',
+      caloriesBurned: workout.caloriesBurned != null ? String(workout.caloriesBurned) : '',
+      eventId: workout.eventId || '',
+      groupId: workout.groupId || '',
+    });
+    setShowModal(true);
+  };
+
+  const handleDeleteWorkout = (workoutSessionId) => {
+    if (!window.confirm('Supprimer cette séance de la liste ?')) return;
+    setWorkouts((prev) => prev.filter((w) => w.workoutSessionId !== workoutSessionId));
+  };
+
   const handleCompleteWorkout = async () => {
     if (!form.workoutSessionId.trim()) {
       setError('Le workoutSessionId est obligatoire.');
@@ -97,7 +126,6 @@ function PlanningPage() {
         eventId: form.eventId || null,
         groupId: form.groupId || null,
       });
-      emitToast('Séance enregistrée avec succès.', 'success');
       setShowModal(false);
       setForm((prev) => ({
         ...prev,
@@ -117,7 +145,7 @@ function PlanningPage() {
     <div className="planning-page">
       <header className="ev-page-header">
         <h1 className="ev-page-title">Planning</h1>
-        <button className="ev-btn-add" onClick={() => setShowModal(true)}>
+        <button className="ev-btn-add" onClick={openNewModal}>
           <Icon name="lucide:plus" size={16} />
           Ajouter une séance
         </button>
@@ -160,7 +188,22 @@ function PlanningPage() {
                   {workout.groupName} • {workout.durationMinutes || 0} min • {workout.caloriesBurned || 0} kcal
                 </p>
               </div>
-              <span className="pill pill-muted">{workout.workoutSessionId}</span>
+              <div className="planning-row-actions">
+                <button
+                  className="planning-action-btn"
+                  title="Finaliser / modifier"
+                  onClick={() => openFinalizeModal(workout)}
+                >
+                  <Icon name="lucide:check-circle" size={16} />
+                </button>
+                <button
+                  className="planning-action-btn planning-action-btn-danger"
+                  title="Supprimer"
+                  onClick={() => handleDeleteWorkout(workout.workoutSessionId)}
+                >
+                  <Icon name="lucide:trash-2" size={16} />
+                </button>
+              </div>
             </div>
           ))}
           {!filteredWorkouts.length && (
@@ -169,14 +212,7 @@ function PlanningPage() {
         </div>
       </Card>
 
-      <Card title="Rappel" icon="lucide:bell-ring">
-        <p className="planning-note">
-          Cette page est alimentée par `myWorkoutSessions(limit)` et la mutation
-          `completeWorkoutSession(...)`.
-        </p>
-      </Card>
-
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Enregistrer une séance">
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={modalTitle}>
         <div className="ev-form-group">
           <label className="field-label">Workout Session ID</label>
           <input

@@ -1,3 +1,4 @@
+import { emitSuccess } from './appEvents.js';
 import { gatewayRequest } from './graphqlClient.js';
 import { requireAuthToken } from './serviceUtils.js';
 
@@ -86,5 +87,6 @@ export async function fetchPlanningData() {
 export async function completeWorkoutSession(input) {
   const token = requireAuthToken();
   const payload = await gatewayRequest(COMPLETE_WORKOUT_MUTATION, input, token);
+  emitSuccess('Séance enregistrée.');
   return payload.completeWorkoutSession;
 }
